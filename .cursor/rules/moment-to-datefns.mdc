@@ -1,0 +1,67 @@
+---
+description: Migrate Moment.js usage to date-fns. Apply when touching files importing 'moment' or 'moment-timezone'.
+globs: ["target-app/**/*.{ts,tsx,js,jsx}"]
+alwaysApply: false
+---
+
+# Moment.js -> date-fns Migration Policy
+
+## Hard rules
+
+- NEVER leave a `moment` import in a migrated file.
+- NEVER auto-migrate a file with no test coverage. Flag it for human review.
+- NEVER silently rewrite snapshot-like string expectations that include date formats.
+- ALWAYS preserve timezone semantics. If unclear, pause and ask.
+
+## Mapping table
+
+| Moment | date-fns | Notes |
+|---|---|---|
+| `moment()` | `new Date()` | Use `new Date(input)` when source exists |
+| `moment(x).format('YYYY-MM-DD')` | `format(x, 'yyyy-MM-dd')` | Token case differs |
+| `moment(x).add(1, 'day')` | `addDays(x, 1)` | date-fns returns a new date |
+| `moment(x).subtract(...)` | `sub(x, { ... })` | Prefer precise unit helpers when possible |
+| `moment(x).isBefore(y)` | `isBefore(x, y)` | Keep comparison direction |
+| `moment.duration(...)` | `intervalToDuration` or math helpers | Be explicit for hours/minutes |
+| `moment.tz(x, zone)` | `utcToZonedTime` + `formatInTimeZone` from `date-fns-tz` | Preserve fallback behavior |
+
+## Format token translation
+
+- `YYYY` -> `yyyy`
+- `YY` -> `yy`
+- `DD` -> `dd`
+- `D` -> `d`
+- `A` -> `a`
+- `ddd` -> `EEE`
+- `dddd` -> `EEEE`
+- Wrap literal text in single quotes for date-fns formats.
+
+## Mutability caution
+
+Moment is mutable. date-fns is immutable.
+
+If original code mutates and reuses the same moment object, preserve behavior by explicitly threading the updated value through subsequent calls.
+
+## Timezone handling
+
+- Treat nullable user timezone values as behavior-sensitive.
+- If source behavior falls back to local timezone on null, preserve it.
+- If timezone source is dynamic and semantics are unclear, stop and ask for human input.
+
+## Testing requirement
+
+For each migrated file:
+
+1. Run the file-level or module-level tests.
+2. If tests fail, stop and mark the file as `human-review`.
+3. Include failing command output in the run summary.
+
+## Expected run summary format
+
+Every migration run summary should include:
+
+- files touched
+- transformations applied
+- format token updates
+- timezone/mutability decisions
+- test command and result

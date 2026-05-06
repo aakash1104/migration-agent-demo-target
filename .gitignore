@@ -1,0 +1,7 @@
+node_modules
+*.log
+.DS_Store
+artifacts/runs/*.log
+target-app/dist
+target-app/coverage
+.env

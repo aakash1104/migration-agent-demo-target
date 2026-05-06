@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-05-06T20:56:10.533Z",
+  "source": "/Users/aakash/playground/migration-agent-demo/target-app",
+  "items": [
+    {
+      "file": "src/lib/codemod-counterexample.ts",
+      "complexity": "trivial",
+      "reason": "simple formatting and date arithmetic usage"
+    },
+    {
+      "file": "src/lib/trivial.ts",
+      "complexity": "trivial",
+      "reason": "simple formatting and date arithmetic usage"
+    },
+    {
+      "file": "src/lib/medium.ts",
+      "complexity": "mutation-aware",
+      "reason": "chained/duration workflow likely to need care"
+    },
+    {
+      "file": "src/lib/hard.ts",
+      "complexity": "timezone",
+      "reason": "timezone/mutability-sensitive paths"
+    }
+  ]
+}
