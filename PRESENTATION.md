@@ -195,7 +195,30 @@ sequenceDiagram
 
 ---
 
-## 13) Ask / Closing
+## 13) What's Next
+
+**Near-term moves after this prototype**
+
+- **Metrics & baseline:** capture usage sites, bundle, and test runtime before the next pilot batch
+- **Pilot validation:** run a scoped cloud demo (`--only` / `migrate:cloud:one`) to stress PR quality and review load
+- **Operations:** publish an operator runbook (env vars, base branch, branch/PR cleanup, artifact retention)
+- **Rollout:** schedule a second pilot slice (one service or package) with the same rule pack
+- **Enablement:** point teams at the hook + policy so new Moment usage cannot slip back unnoticed
+
+---
+
+## 14) Future Extensions
+
+**Where the harness could go next**
+
+- **Jira / Linear:** human-review queue, labels, and assignees from plan complexity; auto-link PRs to migration epics; transition tickets when PR merges or fails
+- **GitHub Issues:** issue references, project fields, and milestones tied to batch scope; same linkage patterns as above where the org lives on GitHub
+- **Slack:** webhooks for batch completion, human-review backlog depth, and run failures
+- **Docs:** Confluence or Notion pages generated from `artifacts/` (plan, runs, summary) for leadership and audit readers
+
+---
+
+## 15) Ask / Closing
 
 **This prototype demonstrates a reusable enterprise workflow**
 
