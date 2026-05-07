@@ -1,41 +1,84 @@
-import moment from "moment";
+import {
+  addDays,
+  addHours,
+  addMinutes,
+  compareAsc,
+  intervalToDuration,
+  parseISO,
+  subMonths,
+} from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+
+const UTC = "UTC";
 
 export function durationFromMinutes(minutes: number): string {
-  const duration = moment.duration(minutes, "minutes");
-  return `${duration.hours()}h ${duration.minutes()}m`;
+  const duration = intervalToDuration({ start: 0, end: minutes * 60 * 1000 });
+  return `${duration.hours ?? 0}h ${duration.minutes ?? 0}m`;
 }
 
 export function durationFromSeconds(seconds: number): string {
-  const duration = moment.duration(seconds, "seconds");
-  return `${duration.minutes()}m ${duration.seconds()}s`;
+  const duration = intervalToDuration({ start: 0, end: seconds * 1000 });
+  return `${duration.minutes ?? 0}m ${duration.seconds ?? 0}s`;
 }
 
 export function compareWindows(left: string, right: string): "before" | "after" | "same" {
-  const leftMoment = moment.utc(left);
-  const rightMoment = moment.utc(right);
-  if (leftMoment.isBefore(rightMoment)) return "before";
-  if (leftMoment.isAfter(rightMoment)) return "after";
+  const cmp = compareAsc(parseISO(left), parseISO(right));
+  if (cmp < 0) return "before";
+  if (cmp > 0) return "after";
   return "same";
 }
 
+function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+}
+
+/** Sunday-start week boundaries in UTC (Moment default locale). */
+function startOfUtcWeek(d: Date): Date {
+  const sod = startOfUtcDay(d);
+  return addDays(sod, -sod.getUTCDay());
+}
+
+function endOfUtcWeek(d: Date): Date {
+  const weekEndDay = addDays(startOfUtcWeek(d), 6);
+  return new Date(
+    Date.UTC(
+      weekEndDay.getUTCFullYear(),
+      weekEndDay.getUTCMonth(),
+      weekEndDay.getUTCDate(),
+      23,
+      59,
+      59,
+      999,
+    ),
+  );
+}
+
 export function rollingRangeLabel(input: string): string {
-  const start = moment.utc(input).startOf("week");
-  const end = moment.utc(input).endOf("week");
-  return `${start.format("MM/DD")} - ${end.format("MM/DD")}`;
+  const d = parseISO(input);
+  const start = startOfUtcWeek(d);
+  const end = endOfUtcWeek(d);
+  return `${formatInTimeZone(start, UTC, "MM/dd")} - ${formatInTimeZone(end, UTC, "MM/dd")}`;
 }
 
 export function scheduleOffset(input: string, hours: number, minutes: number): string {
-  return moment.utc(input).add(hours, "hours").add(minutes, "minutes").format("YYYY-MM-DD HH:mm");
+  const shifted = addMinutes(addHours(parseISO(input), hours), minutes);
+  return formatInTimeZone(shifted, UTC, "yyyy-MM-dd HH:mm");
 }
 
 export function quarterLabel(input: string): string {
-  const month = moment.utc(input).month();
-  const quarter = Math.floor(month / 3) + 1;
-  return `Q${quarter} ${moment.utc(input).format("YYYY")}`;
+  const d = parseISO(input);
+  const monthUtc = d.getUTCMonth();
+  const quarter = Math.floor(monthUtc / 3) + 1;
+  return `Q${quarter} ${formatInTimeZone(d, UTC, "yyyy")}`;
+}
+
+function startOfUtcMonth(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1, 0, 0, 0, 0));
 }
 
 export function reportPeriodLabel(input: string): string {
-  const base = moment.utc(input).startOf("month");
-  const previous = base.clone().subtract(1, "month");
-  return `${previous.format("MMM YYYY")} -> ${base.format("MMM YYYY")}`;
+  const d = parseISO(input);
+  const base = startOfUtcMonth(d);
+  const previous = subMonths(base, 1);
+  return `${formatInTimeZone(previous, UTC, "MMM yyyy")} -> ${formatInTimeZone(base, UTC, "MMM yyyy")}`;
 }
