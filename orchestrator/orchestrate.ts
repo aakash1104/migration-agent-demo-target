@@ -8,10 +8,57 @@ import { runMigrationWorkUnit } from "./migrate-batch";
 import { formatDuration, logInfo, logPhaseEnd, logPhaseStart } from "./run-telemetry";
 import type { BatchRunResult, MigrationItem } from "./types";
 
+function readFlagValue(flag: string): string | undefined {
+  const argv = process.argv.slice(2);
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === flag) {
+      const next = argv[i + 1];
+      if (!next || next.startsWith("-")) {
+        throw new Error(`${flag} requires a path (e.g. ${flag} src/lib/trivial.ts)`);
+      }
+      return next;
+    }
+    if (a.startsWith(`${flag}=`)) {
+      const v = a.slice(flag.length + 1);
+      if (!v.trim()) throw new Error(`${flag}= requires a non-empty path`);
+      return v;
+    }
+  }
+  return undefined;
+}
+
+function normalizeOnlyPath(targetCwd: string, raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) throw new Error("--only path is empty");
+  const abs = path.isAbsolute(trimmed) ? path.normalize(trimmed) : path.resolve(targetCwd, trimmed);
+  const rel = path.relative(targetCwd, abs);
+  if (rel === "" || rel.startsWith("..")) {
+    throw new Error(`--only must resolve to a path under ${targetCwd}: ${raw}`);
+  }
+  return rel.split(path.sep).join("/");
+}
+
+function filterItemsByOnly(items: MigrationItem[], onlyNorm: string): MigrationItem[] {
+  const norm = onlyNorm.replace(/\\/g, "/");
+  const exact = items.filter((i) => i.file === norm || i.file.endsWith("/" + norm));
+  if (exact.length > 0) return exact;
+  const base = path.posix.basename(norm);
+  const byBase = items.filter((i) => path.posix.basename(i.file) === base);
+  if (byBase.length === 1) return byBase;
+  if (byBase.length > 1) {
+    throw new Error(`--only "${onlyNorm}" is ambiguous; matches: ${byBase.map((i) => i.file).join(", ")}`);
+  }
+  throw new Error(
+    `--only "${onlyNorm}" did not match any discovered files (discovered: ${items.map((i) => i.file).join(", ") || "none"})`
+  );
+}
+
 const args = new Set(process.argv.slice(2));
 const discoverOnly = args.has("--discover-only");
 const cloudMode = args.has("--cloud");
 const batchMode = args.has("--batch");
+const onlyPathRaw = readFlagValue("--only");
 
 function getApiKey(): string | null {
   return process.env.CURSOR_API_KEY ?? null;
@@ -54,8 +101,14 @@ async function main(): Promise<void> {
     ? await runDiscovery(targetCwd, apiKey)
     : await runDiscoveryWithoutSdk(targetCwd);
   const sorted = sortByComplexity(discovered.items);
-  await writePlan({ ...discovered, items: sorted });
-  printPlan(sorted);
+  let planItems = sorted;
+  if (onlyPathRaw) {
+    const onlyNorm = normalizeOnlyPath(targetCwd, onlyPathRaw);
+    planItems = filterItemsByOnly(sorted, onlyNorm);
+    printHeader(`Only (filtered): ${planItems.map((i) => i.file).join(", ")}`);
+  }
+  await writePlan({ ...discovered, items: planItems });
+  printPlan(planItems);
 
   if (discoverOnly) {
     printHeader("Discover-only complete");

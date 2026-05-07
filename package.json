@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "migrate": "tsx orchestrator/orchestrate.ts",
+    "migrate:one": "tsx orchestrator/orchestrate.ts --only src/lib/trivial.ts",
     "migrate:cloud": "tsx orchestrator/orchestrate.ts --cloud",
+    "migrate:cloud:one": "tsx orchestrator/orchestrate.ts --cloud --only src/lib/trivial.ts",
     "migrate:cloud:batch": "tsx orchestrator/orchestrate.ts --cloud --batch",
     "discover": "tsx orchestrator/orchestrate.ts --discover-only",
     "smoke": "tsx orchestrator/smoke.ts",
