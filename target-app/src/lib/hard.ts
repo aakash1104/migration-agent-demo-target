@@ -7,13 +7,12 @@ const USER_DISPLAY_FORMAT = "yyyy-MM-dd HH:mm zzz";
 
 /** System IANA zone, matching moment `.local()` when no tz is provided. */
 function systemTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
 }
 
 /**
- * Parses `input` as an instant (ISO) and shifts the UTC calendar date by `days`
- * — equivalent to mutating copies with `moment.utc(...).add(days, 'day')` for
- * day-granularity math.
+ * Parses `input` as an instant (ISO) and applies UTC calendar `days` deltas.
+ * Mirrors mutable Moment `.add(days, 'day')` chaining by threading each result.
  */
 function addUtcDays(date: Date, days: number): Date {
   const next = new Date(date.getTime());
@@ -22,7 +21,7 @@ function addUtcDays(date: Date, days: number): Date {
 }
 
 /** Translate common Moment.js display tokens to date-fns; brackets and quotes follow Moment literals. */
-export function momentDisplayPatternToDateFns(momentPattern: string): string {
+function momentDisplayPatternToDateFns(momentPattern: string): string {
   const translations: [string, string][] = [
     ["YYYY", "yyyy"],
     ["dddd", "EEEE"],
@@ -32,7 +31,7 @@ export function momentDisplayPatternToDateFns(momentPattern: string): string {
     ["HH", "HH"],
     ["mm", "mm"],
     ["ss", "ss"],
-    ["A", "aa"],
+    ["A", "a"],
     ["a", "aaa"],
     ["D", "d"],
     ["z", "zzz"],
@@ -111,7 +110,7 @@ export function timezoneFromUser(input: string, tz: UserTz): string {
 export function mutableChainWorkflow(input: string): { first: string; second: string } {
   const start = parseISO(input);
   const afterOne = addUtcDays(start, 1);
-  const afterThree = addUtcDays(start, 3);
+  const afterThree = addUtcDays(afterOne, 2);
   return {
     first: formatInTimeZone(afterOne, "UTC", "yyyy-MM-dd"),
     second: formatInTimeZone(afterThree, "UTC", "yyyy-MM-dd"),
