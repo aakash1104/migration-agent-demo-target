@@ -1,13 +1,17 @@
+import { Agent } from "@cursor/sdk";
 import path from "node:path";
 import { runDiscovery, runDiscoveryWithoutSdk } from "./discover";
 import { printHeader, printPlan, printRunSummary, printRunUpdate } from "./dashboard";
 import { readPlan, writePlan } from "./plan-store";
-import { runBatchMigration } from "./migrate-batch";
+import { groupIntoBatches } from "./batch-router";
+import { runMigrationWorkUnit } from "./migrate-batch";
+import { formatDuration, logInfo, logPhaseEnd, logPhaseStart } from "./run-telemetry";
 import type { BatchRunResult, MigrationItem } from "./types";
 
 const args = new Set(process.argv.slice(2));
 const discoverOnly = args.has("--discover-only");
 const cloudMode = args.has("--cloud");
+const batchMode = args.has("--batch");
 
 function getApiKey(): string | null {
   return process.env.CURSOR_API_KEY ?? null;
@@ -25,13 +29,23 @@ function sortByComplexity(items: MigrationItem[]): MigrationItem[] {
 }
 
 async function main(): Promise<void> {
+  const orchestratorT0 = Date.now();
   const root = process.cwd();
   const targetCwd = path.resolve(root, "target-app");
   const apiKey = getApiKey();
   const cloudRepoUrl = process.env.MIGRATION_DEMO_REPO_URL;
   const cloudBaseRef = process.env.MIGRATION_DEMO_BASE_REF ?? "main";
 
-  printHeader(cloudMode ? "Migration Orchestrator (cloud flag enabled)" : "Migration Orchestrator (local)");
+  const modeLabel = [cloudMode ? "cloud" : "local", batchMode ? "batch-routing" : "per-file"].join(" · ");
+  printHeader(`Migration Orchestrator (${modeLabel})`);
+  logInfo(
+    `target-app=${targetCwd} · apiKey=${apiKey ? "set" : "missing (dry-run)"} · repo=${cloudRepoUrl ?? "n/a"} · base=${cloudBaseRef}`
+  );
+  if (batchMode) {
+    printHeader(
+      "Policy routing: easy batch = trivial | format-only | mutation-aware; hard batch = timezone | dynamic-format"
+    );
+  }
   if (cloudMode && !cloudRepoUrl) {
     throw new Error("Cloud mode requires MIGRATION_DEMO_REPO_URL to be set");
   }
@@ -50,19 +64,74 @@ async function main(): Promise<void> {
 
   const plan = await readPlan();
   const results: BatchRunResult[] = [];
-  for (const item of plan.items) {
-    printRunUpdate(item.file, "running");
-    const result = await runBatchMigration(targetCwd, apiKey, item, {
-      cloudMode,
-      cloudRepoUrl,
-      cloudBaseRef
+  let sharedCloudAgent: Awaited<ReturnType<typeof Agent.create>> | undefined;
+  if (cloudMode && apiKey) {
+    logPhaseStart(
+      "Shared cloud agent",
+      "VM provision + clone (first migration after this may still take a while; heartbeats print during waits)"
+    );
+    const createT0 = Date.now();
+    sharedCloudAgent = await Agent.create({
+      apiKey,
+      model: { id: "composer-2" },
+      cloud: {
+        repos: [{ url: cloudRepoUrl!, startingRef: cloudBaseRef }],
+        autoCreatePR: true,
+        skipReviewerRequest: true
+      }
     });
-    results.push(result);
-    const detail = result.prUrl ? `${result.summary} | PR: ${result.prUrl}` : result.summary;
-    printRunUpdate(item.file, result.status, detail);
+    logPhaseEnd("Shared cloud agent ready", Date.now() - createT0, { agentId: sharedCloudAgent.agentId });
+  }
+
+  const workUnits: MigrationItem[][] = batchMode
+    ? groupIntoBatches(plan.items)
+    : plan.items.map((item) => [item]);
+
+  logInfo(
+    `Work queue: ${workUnits.length} agent send(s) for ${plan.items.length} file(s) · batching=${batchMode ? "on" : "off"}`
+  );
+
+  try {
+    let unitIndex = 0;
+    for (const batch of workUnits) {
+      unitIndex += 1;
+      const batchLabel = batch.map((i) => i.file).join(", ");
+      printRunUpdate(batchLabel, "running", batch.length > 1 ? `batch (${batch.length} files)` : undefined);
+      const unitT0 = Date.now();
+      const batchResults = await runMigrationWorkUnit(
+        targetCwd,
+        apiKey,
+        batch,
+        {
+          cloudMode,
+          cloudRepoUrl,
+          cloudBaseRef
+        },
+        sharedCloudAgent
+      );
+      logPhaseEnd(
+        `Migration unit ${unitIndex}/${workUnits.length}`,
+        Date.now() - unitT0,
+        batchResults[0]?.prUrl ? { pr: "opened" } : {}
+      );
+      for (const result of batchResults) {
+        results.push(result);
+        const detail = result.prUrl ? `${result.summary} | PR: ${result.prUrl}` : result.summary;
+        printRunUpdate(result.item.file, result.status, detail);
+      }
+    }
+  } finally {
+    if (sharedCloudAgent) {
+      await sharedCloudAgent[Symbol.asyncDispose]();
+    }
   }
 
   printRunSummary(results);
+  logPhaseEnd("Total orchestrator run", Date.now() - orchestratorT0, {
+    workUnits: workUnits.length,
+    files: plan.items.length,
+    passed: results.filter((r) => r.status === "passed").length
+  });
 }
 
 main().catch((error) => {

@@ -1,26 +1,21 @@
 {
-  "generatedAt": "2026-05-06T20:56:10.533Z",
+  "generatedAt": "2026-05-06T21:46:53.172Z",
   "source": "/Users/aakash/playground/migration-agent-demo/target-app",
   "items": [
     {
-      "file": "src/lib/codemod-counterexample.ts",
-      "complexity": "trivial",
-      "reason": "simple formatting and date arithmetic usage"
-    },
-    {
       "file": "src/lib/trivial.ts",
       "complexity": "trivial",
-      "reason": "simple formatting and date arithmetic usage"
+      "reason": "offline discovery fallback (no CURSOR_API_KEY)"
     },
     {
       "file": "src/lib/medium.ts",
       "complexity": "mutation-aware",
-      "reason": "chained/duration workflow likely to need care"
+      "reason": "offline discovery fallback (no CURSOR_API_KEY)"
     },
     {
       "file": "src/lib/hard.ts",
       "complexity": "timezone",
-      "reason": "timezone/mutability-sensitive paths"
+      "reason": "offline discovery fallback (no CURSOR_API_KEY)"
     }
   ]
 }

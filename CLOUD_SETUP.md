@@ -39,10 +39,23 @@ export MIGRATION_DEMO_BASE_REF="main"   # optional, defaults to main
 npm run migrate:cloud
 ```
 
+**Fewer runs / fewer PRs (recommended for latency):** policy routing batches files by risk tier, then sends one agent run (and one PR) per batch:
+
+```bash
+npm run migrate:cloud:batch
+# same as: tsx orchestrator/orchestrate.ts --cloud --batch
+```
+
+- **Easy batch:** `trivial`, `format-only`, `mutation-aware` (e.g. codemod-counterexample + trivial + medium in one PR).
+- **Hard batch:** `timezone`, `dynamic-format` (e.g. `hard.ts` alone in a second PR).
+
+This is **deterministic policy routing** (rules on complexity labels), not ML. You can change tiers in `orchestrator/batch-router.ts`.
+
 Current behavior:
-- The flag uses `@cursor/sdk` cloud agents with `autoCreatePR: true`.
-- It opens one PR per discovered module/file (`trivial`, `medium`, `hard`, etc.).
-- Branch naming is deterministic: `migrate/<path-with-dashes>`.
+- The flag uses one shared `@cursor/sdk` cloud agent with `autoCreatePR: true`.
+- **Default:** one PR per file/module.
+- **With `--batch`:** one PR per tier batch (typically 2 PRs for this demo repo).
+- Branch naming: per-file `migrate/<path-with-dashes>`; batched `migrate/batch-<tier>-<sorted-basenames>`.
 - If `CURSOR_API_KEY` is missing, it falls back to local dry-run mode.
 - If `MIGRATION_DEMO_REPO_URL` is missing, cloud mode errors immediately.
 

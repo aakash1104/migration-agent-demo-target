@@ -1,6 +1,7 @@
 import { Agent } from "@cursor/sdk";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { logPhaseEnd, logPhaseStart, withHeartbeat } from "./run-telemetry";
 import type { MigrationItem, MigrationPlan } from "./types";
 
 function inferComplexity(file: string): MigrationItem["complexity"] {
@@ -10,6 +11,8 @@ function inferComplexity(file: string): MigrationItem["complexity"] {
 }
 
 export async function runDiscovery(targetCwd: string, apiKey: string): Promise<MigrationPlan> {
+  logPhaseStart("Discovery", "local agent · list files under src/ using moment");
+
   await using agent = await Agent.create({
     apiKey,
     model: { id: "composer-2" },
@@ -22,7 +25,10 @@ export async function runDiscovery(targetCwd: string, apiKey: string): Promise<M
   ].join(" ");
 
   const run = await agent.send(prompt);
-  const result = await run.wait();
+  const { value: result, elapsedMs } = await withHeartbeat({
+    label: "discovery · waiting for agent",
+    work: () => run.wait()
+  });
   const lines = (result.result ?? "")
     .split("\n")
     .map((line) => line.trim())
@@ -40,6 +46,11 @@ export async function runDiscovery(targetCwd: string, apiKey: string): Promise<M
           : "simple formatting and date arithmetic usage"
   }));
 
+  logPhaseEnd("Discovery", elapsedMs, {
+    candidates: deduped.length,
+    ...(result.durationMs != null ? { sdkRunMs: result.durationMs } : {})
+  });
+
   return {
     generatedAt: new Date().toISOString(),
     source: targetCwd,
@@ -48,6 +59,8 @@ export async function runDiscovery(targetCwd: string, apiKey: string): Promise<M
 }
 
 export async function runDiscoveryWithoutSdk(targetCwd: string): Promise<MigrationPlan> {
+  logPhaseStart("Discovery", "offline scan (no CURSOR_API_KEY)");
+  const t0 = Date.now();
   const candidates = ["src/lib/trivial.ts", "src/lib/medium.ts", "src/lib/hard.ts", "src/server.ts"];
   const items: MigrationItem[] = [];
 
@@ -61,6 +74,8 @@ export async function runDiscoveryWithoutSdk(targetCwd: string): Promise<Migrati
       reason: "offline discovery fallback (no CURSOR_API_KEY)"
     });
   }
+
+  logPhaseEnd("Discovery", Date.now() - t0, { candidates: items.length });
 
   return {
     generatedAt: new Date().toISOString(),

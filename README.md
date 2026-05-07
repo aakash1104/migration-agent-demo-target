@@ -41,7 +41,9 @@ See [CLOUD_SETUP.md](./CLOUD_SETUP.md) for optional GitHub/cloud PR setup.
 # After setup
 npm install
 npm run smoke      # verify the SDK is wired up correctly
-npm run migrate    # the main event
+npm run migrate    # the main event (one agent send per file)
+npm run migrate -- --batch   # policy routing: easy modules together, hard modules separate (fewer PRs)
+npm run migrate:cloud:batch  # same in cloud + auto-PR (see CLOUD_SETUP.md)
 ```
 
 ## Repo layout
