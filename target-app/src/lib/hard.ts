@@ -1,21 +1,124 @@
-import moment from "moment-timezone";
+import { parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 
 export type UserTz = string | null | undefined;
 
-export function timezoneFromUser(input: string, tz: UserTz): string {
-  if (!tz) {
-    return moment(input).local().format("YYYY-MM-DD HH:mm z");
+const USER_DISPLAY_FORMAT = "yyyy-MM-dd HH:mm zzz";
+
+/** System IANA zone, matching moment `.local()` when no tz is provided. */
+function systemTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/**
+ * Parses `input` as an instant (ISO) and shifts the UTC calendar date by `days`
+ * — equivalent to mutating copies with `moment.utc(...).add(days, 'day')` for
+ * day-granularity math.
+ */
+function addUtcDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+/** Translate common Moment.js display tokens to date-fns; brackets and quotes follow Moment literals. */
+export function momentDisplayPatternToDateFns(momentPattern: string): string {
+  const translations: [string, string][] = [
+    ["YYYY", "yyyy"],
+    ["dddd", "EEEE"],
+    ["ddd", "EEE"],
+    ["YY", "yy"],
+    ["DD", "dd"],
+    ["HH", "HH"],
+    ["mm", "mm"],
+    ["ss", "ss"],
+    ["A", "aa"],
+    ["a", "aaa"],
+    ["D", "d"],
+    ["z", "zzz"],
+  ];
+  translations.sort((a, b) => b[0].length - a[0].length);
+
+  const quoteLiteral = (s: string): string => `'${s.replace(/'/g, "''")}'`;
+
+  let i = 0;
+  const out: string[] = [];
+
+  while (i < momentPattern.length) {
+    const c = momentPattern[i];
+
+    if (c === "[") {
+      const end = momentPattern.indexOf("]", i + 1);
+      if (end === -1) {
+        out.push(quoteLiteral(c));
+        i += 1;
+        continue;
+      }
+      out.push(quoteLiteral(momentPattern.slice(i + 1, end)));
+      i = end + 1;
+      continue;
+    }
+
+    if (c === "'") {
+      if (momentPattern[i + 1] === "'") {
+        out.push("''");
+        i += 2;
+        continue;
+      }
+      let j = i + 1;
+      let buf = "";
+      while (j < momentPattern.length) {
+        if (momentPattern[j] === "'") {
+          if (momentPattern[j + 1] === "'") {
+            buf += "'";
+            j += 2;
+            continue;
+          }
+          break;
+        }
+        buf += momentPattern[j]!;
+        j += 1;
+      }
+      out.push(quoteLiteral(buf));
+      i = j < momentPattern.length ? j + 1 : momentPattern.length;
+      continue;
+    }
+
+    let matched = false;
+    for (const [momentTok, dateFnsTok] of translations) {
+      if (momentPattern.startsWith(momentTok, i)) {
+        out.push(dateFnsTok);
+        i += momentTok.length;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      out.push(c!);
+      i += 1;
+    }
   }
-  return moment.tz(input, tz).format("YYYY-MM-DD HH:mm z");
+
+  return out.join("");
+}
+
+export function timezoneFromUser(input: string, tz: UserTz): string {
+  const date = parseISO(input);
+  const zone = !tz || tz.trim() === "" ? systemTimeZone() : tz;
+  return formatInTimeZone(date, zone, USER_DISPLAY_FORMAT);
 }
 
 export function mutableChainWorkflow(input: string): { first: string; second: string } {
-  const checkpoint = moment.utc(input);
-  const first = checkpoint.add(1, "day").format("YYYY-MM-DD");
-  const second = checkpoint.add(2, "day").format("YYYY-MM-DD");
-  return { first, second };
+  const start = parseISO(input);
+  const afterOne = addUtcDays(start, 1);
+  const afterThree = addUtcDays(start, 3);
+  return {
+    first: formatInTimeZone(afterOne, "UTC", "yyyy-MM-dd"),
+    second: formatInTimeZone(afterThree, "UTC", "yyyy-MM-dd"),
+  };
 }
 
 export function dynamicFormatFromConfig(input: string, formatString: string): string {
-  return moment.utc(input).format(formatString);
+  const translated = momentDisplayPatternToDateFns(formatString);
+  return formatInTimeZone(parseISO(input), "UTC", translated);
 }
